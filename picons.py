@@ -26,7 +26,7 @@ sys.setdefaultencoding('utf-8')
 DEBUG_MODE = False
 
 CONFIG = {
-    'updateurl': "https://raw.githubusercontent.com/systemof/picons/master/picons.py",
+    'updateurl': "https://raw.githubusercontent.com/josemoraes99/enigma2_picons/master/picons.py",
     'urlPicons': "https://hk319yfwbl.execute-api.sa-east-1.amazonaws.com/prod",
     'e2dir': '/etc/enigma2/',
     'lambedbFile': '/etc/enigma2/lamedb',
@@ -199,9 +199,7 @@ Compares two version number strings
         import shutil
         shutil.copymode(backup_path, app_path)
     except:
-        os.chmod(app_path, 0o755)
-)
-
+        os.chmod(app_path, 0755)
     logging.info("New version installed as %s" % app_path)
     logging.info("(previous version backed up to %s)" % (backup_path))
     return True

@@ -3,7 +3,6 @@
 
 __version__ = "0.3.9"
 
-
 import argparse
 import sys
 import logging
@@ -55,7 +54,6 @@ DEV_CONFIG = {
     'tvheadendAuth': '',
     'dl_simultaneos': 14,
 }
-
 
 def update(dl_url, force_update=False):
     """
@@ -467,11 +465,15 @@ def lerBouquetGroup(conf):
     g = conf['bouquetGroup']
     bResult = []
     for b in g:
-        bResult = bResult + lerArquivoBouquet(b, conf)
+        bouquets = lerArquivoBouquet(b, conf)
+        if bouquets:
+            bResult.extend(bouquets)
 
     listChan = []
     for f in bResult:
-        listChan = listChan + lerArquivoUserBouquet(f, conf)
+        channels = lerArquivoUserBouquet(f, conf)
+        if channels:
+            listChan.extend(channels)
 
     listChClean = []
     for l in listChan:
@@ -494,7 +496,7 @@ def lerArquivoBouquet(f, conf):
 
     else:
         logging.info("Arquivo nao encontrado")
-        return False
+        return []
 
 
 def lerArquivoUserBouquet(f, conf):
@@ -518,6 +520,9 @@ def lerArquivoUserBouquet(f, conf):
                         channels.append([filenameE2, canalclean])
 
             return channels
+    else:
+        logging.info("Arquivo nao encontrado")
+        return []
 
 
 def remove_duplicates(a):
@@ -531,7 +536,6 @@ def remove_duplicates(a):
                     found = True
 
             if found == False:
-                # tmpList.append([item[1],[["e2", item[0]]]])
                 tmpList.append([item[0], item[1]])
 
     for i in tmpList:
@@ -542,8 +546,6 @@ def remove_duplicates(a):
                 f[1].append(["e2", i[0]])
 
         if found == False:
-            # i[1].append(["e2", i[1]])
-            # else:
             finalList.append([i[1], [["e2", i[0]]]])
 
     return finalList
@@ -554,7 +556,6 @@ def mergeLists(listE2, listTvh):
     for item in listE2:
         for itemTvh in listTvh:
             if item[0] == itemTvh[1]:
-                # print "found " + itemTvh[0]
                 item[1].append(["tvh", itemTvh[0]])
 
         finalList.append(item)
@@ -566,7 +567,6 @@ def mergeLists(listE2, listTvh):
                 itemFound = True
 
         if itemFound == False:
-            # print "new item " + itemTvh[1]
             finalList.append([itemTvh[1], [["tvh", itemTvh[0]]]])
 
     return finalList
@@ -633,35 +633,6 @@ def changeTvhConfig(conf):
     tvhreq = urllib.urlopen("http://" + conf['tvheadendAuth'] + conf['tvheadendAddress'] + ":" + conf['tvheadendPort'] +
                             '/api/config/save?node={"chiconpath":"file:///home/root/tvheadend_picons/%25c.png", "prefer_picon":"False", "chiconscheme":"2"}')
 
-    # if  os.path.isdir(conf['tvheadendChannelConfigDirectory']):
-    #     logging.info( "Reset Icon dos canais do TVHeadend" )
-    #     path = conf['tvheadendChannelConfigDirectory']
-    #     files = []
-    #     # r=root, d=directories, f = files
-    #     for r, d, f in os.walk(path):
-    #         for file in f:
-    #             files.append(os.path.join(r, file))
-
-    #     for f in files:
-    #         with open(f, "r+") as jsonFile:
-    #             data = json.load(jsonFile)
-    #             if data['icon'] != "":
-    #                 data['icon'] = ""
-    #                 jsonFile.seek(0)  # rewind
-    #                 json.dump(data, jsonFile, indent=4)
-    #                 jsonFile.truncate()
-
-    req = urllib2.Request("http://" + conf['tvheadendAuth'] +
-                          conf['tvheadendAddress'] + ":" + conf['tvheadendPort'] + '/api/channel/list')
-    fil = urllib2.urlopen(req)
-    listURL = json.load(fil)
-    fil.close()
-    logging.info("'Reset Icon' dos canais do TVHeadend")
-    for l in listURL['entries']:
-        req1 = urllib2.Request("http://" + conf['tvheadendAuth'] + conf['tvheadendAddress'] + ":" +
-                               conf['tvheadendPort'] + '/api/idnode/save?node={"uuid":"' + l['key'] + '","icon":""}')
-        fil1 = urllib2.urlopen(req1)
-
 
 def reconfigure_image_cache(conf):
     logging.info("Reconfigurando imagecache do TVHeadend")
@@ -690,12 +661,6 @@ def reconfigure_image_cache(conf):
     fil = urllib2.urlopen(req)
     fil.close()
 
-    # executa automaticamente com o clean
-    # req = urllib2.Request( "http://" + conf['tvheadendAddress'] + ":" + conf['tvheadendPort'] + '/api/imagecache/config/trigger?trigger=1' )
-    # fil = urllib2.urlopen(req)
-    # fil.close()
-
-
 def iniciaDownloadPicons(conf):
     listMerged = []
     listFiles = lerLameDb(conf['lambedbFile'])
@@ -723,7 +688,6 @@ def iniciaDownloadPicons(conf):
 
     logging.info("Pronto.")
 
-
 def main():
     global CONFIG, DEV_CONFIG
     global DEBUG_MODE
@@ -744,9 +708,6 @@ def main():
     groupDev.add_argument(
         '--dev', action='store_true', help='modo de testes')
 
-    # groupTvhAuth = parser.add_mutually_exclusive_group()
-    # groupTvhAuth.add_argument('--tvh-user', action='store_true', help = 'usuario admin do Tvheadend')
-    # groupTvhAuth.add_argument('--tvh-password', action='store_true', help = 'senha do Tvheadend')
     parser.add_argument('--tvh-user', type=str,
                         help='usuario admin do Tvheadend')
     parser.add_argument('--tvh-password', type=str, help='senha do Tvheadend')
@@ -755,9 +716,7 @@ def main():
 
     args = parser.parse_args()
 
-    # workaround tvheadend localhost
     CONFIG['tvheadendAddress'] = get_ip()
-    # print CONFIG['tvheadendAddress']
 
     logging.basicConfig(format='%(asctime)s %(message)s', level=logging.DEBUG)
     logging.info("version " + __version__)
@@ -779,8 +738,6 @@ def main():
         sys.exit()
 
     if args.tvh_user and args.tvh_password:
-        # CONFIG['tvheadendAuth'] = args.tvh_user + ":" + args.tvh_password + "@"
-        # print CONFIG['tvheadendAuth']
         print("Autenticação não implementado ainda, sorry.")
         sys.exit()
 

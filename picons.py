@@ -1,4 +1,4 @@
-#!/bin/python2
+#!/bin/python3
 # -*- coding: utf-8 -*-
 
 __version__ = "0.3.9"
@@ -11,7 +11,8 @@ import io
 import re
 import unicodedata
 import json
-import urllib2
+import urllib.request
+import urllib.error
 import threading
 import time
 import uuid
@@ -20,13 +21,10 @@ from functools import wraps
 import socket
 __progress__ = 0
 
-reload(sys)
-sys.setdefaultencoding('utf-8')
-
 DEBUG_MODE = False
 
 CONFIG = {
-    'updateurl': "https://raw.githubusercontent.com/josemoraes99/enigma2_picons/master/picons.py",
+    'updateurl': "https://raw.githubusercontent.com/systemof/picons/master/picons.py",
     'urlPicons': "https://hk319yfwbl.execute-api.sa-east-1.amazonaws.com/prod",
     'e2dir': '/etc/enigma2/',
     'lambedbFile': '/etc/enigma2/lamedb',
@@ -66,7 +64,6 @@ saved in its place.
 Compares two version number strings
 @param vA: first version string to compare
 @param vB: second version string to compare
-@author <a href="http_stream://sebthom.de/136-comparing-version-numbers-in-jython-pytho/">Sebastian Thomschke</a>
 @return negative if vA < vB, zero if vA == vB, positive if vA > vB.
 """
         if vA == vB:
@@ -77,8 +74,8 @@ Compares two version number strings
                 return int(s)
             return s
 
-        seqA = map(num, re.findall('\d+|\w+', vA.replace('-SNAPSHOT', '')))
-        seqB = map(num, re.findall('\d+|\w+', vB.replace('-SNAPSHOT', '')))
+        seqA = list(map(num, re.findall('\d+|\w+', vA.replace('-SNAPSHOT', ''))))
+        seqB = list(map(num, re.findall('\d+|\w+', vB.replace('-SNAPSHOT', ''))))
 
         # this is to ensure that 1.0 == 1.0.0 in cmp(..)
         lenA, lenB = len(seqA), len(seqB)
@@ -87,7 +84,7 @@ Compares two version number strings
         for i in range(lenB, lenA):
             seqB += (0,)
 
-        rc = cmp(seqA, seqB)
+        rc = (seqA > seqB) - (seqA < seqB)
 
         if rc == 0:
             if vA.endswith('-SNAPSHOT'):
@@ -98,12 +95,13 @@ Compares two version number strings
 
     # dl the first 256 bytes and parse it for version number
     try:
-        http_stream = urllib.urlopen(dl_url)
+        http_stream = urllib.request.urlopen(dl_url)
         # update_file = http_stream.read(256)
-        update_file = http_stream.read(300)
+        update_file = http_stream.read(300).decode('utf-8')
         http_stream.close()
 
-    except IOError, (errno, strerror):
+    except urllib.error.URLError as e:
+        errno, strerror = e.args
         logging.info("Unable to retrieve version data")
         logging.info("Error %s: %s" % (errno, strerror))
         return
@@ -147,19 +145,18 @@ Compares two version number strings
     backup_path = app_path + ".old"
     try:
         dl_file = open(dl_path, 'w')
-        http_stream = urllib.urlopen(dl_url)
+        http_stream = urllib.request.urlopen(dl_url)
         total_size = None
         bytes_so_far = 0
         chunk_size = 8192
         try:
-            total_size = int(http_stream.info().getheader(
-                'Content-Length').strip())
+            total_size = int(http_stream.info().get('Content-Length').strip())
         except:
             # The header is improper or missing Content-Length, just download
-            dl_file.write(http_stream.read())
+            dl_file.write(http_stream.read().decode('utf-8'))
 
         while total_size:
-            chunk = http_stream.read(chunk_size)
+            chunk = http_stream.read(chunk_size).decode('utf-8')
             dl_file.write(chunk)
             bytes_so_far += len(chunk)
 
@@ -176,21 +173,24 @@ Compares two version number strings
 
         http_stream.close()
         dl_file.close()
-    except IOError, (errno, strerror):
+    except urllib.error.URLError as e:
+        errno, strerror = e.args
         logging.info("Download failed")
         logging.info("Error %s: %s" % (errno, strerror))
         return
 
     try:
         os.rename(app_path, backup_path)
-    except OSError, (errno, strerror):
+    except OSError as e:
+        errno, strerror = e.args
         logging.info("Unable to rename %s to %s: (%d) %s" %
                      (app_path, backup_path, errno, strerror))
         return
 
     try:
         os.rename(dl_path, app_path)
-    except OSError, (errno, strerror):
+    except OSError as e:
+        errno, strerror = e.args
         logging.info("Unable to rename %s to %s: (%d) %s" %
                      (dl_path, app_path, errno, strerror))
         return
@@ -203,20 +203,6 @@ Compares two version number strings
     logging.info("New version installed as %s" % app_path)
     logging.info("(previous version backed up to %s)" % (backup_path))
     return True
-
-# def convert_size(size_bytes):
-#     if size_bytes == 0:
-#         return "0B"
-#     size_name = ("B", "KB", "MB", "GB", "TB", "PB", "EB", "ZB", "YB")
-#     i = int(math.floor(math.log(size_bytes, 1024)))
-#     p = math.pow(1024, i)
-#     s = round(size_bytes / p, 2)
-#     return "%s %s" % (s, size_name[i])
-
-# update_progress() : Displays or updates a console progress bar
-# Accepts a float between 0 and 1. Any int will be converted to a float.
-# A value under 0 represents a 'halt'.
-# A value at 1 or bigger represents 100%
 
 
 def update_progress(progress):
@@ -236,11 +222,9 @@ def update_progress(progress):
     if progress >= 1:
         progress = 1
         status = "\r\n"
-        # status = "Done...\r\n"
     block = int(round(barLength*progress))
     text = "\rProgresso: [{0}] {1}% {2}".format(
         "="*block + " "*(barLength-block), int(progress*100), status)
-    # text = "\rPercent: [{0}] {1}% {2}".format( "="*block + " "*(barLength-block), int(progress*100), status)
     sys.stdout.write(text)
     sys.stdout.flush()
 
@@ -272,12 +256,12 @@ def retry(ExceptionToCheck, tries=4, delay=3, backoff=2, logger=None):
             while mtries > 1:
                 try:
                     return f(*args, **kwargs)
-                except ExceptionToCheck, e:
+                except ExceptionToCheck as e:
                     msg = "%s, Retrying in %d seconds..." % (str(e), mdelay)
                     if logger:
                         logger.warning(msg)
                     else:
-                        print msg
+                        print(msg)
                     time.sleep(mdelay)
                     mtries -= 1
                     mdelay *= backoff
@@ -301,9 +285,9 @@ def get_ip():
     return IP
 
 
-@retry(urllib2.URLError, tries=4, delay=3, backoff=2)
+@retry(urllib.error.URLError, tries=4, delay=3, backoff=2)
 def urlopen_with_retry(url):
-    return urllib2.urlopen(url)
+    return urllib.request.urlopen(url)
 
 
 def downloadFile(url, fileArr, conf):
@@ -352,22 +336,15 @@ def downloadPicons(listDw, conf):
     piconsList = list(dict.fromkeys(piconsList))
     data = {'src': 'e2', 'node': uuidOne, 'listChannel': piconsList}
     data = json.dumps(data)
-    # print(data)
-    req = urllib2.Request(conf['urlPicons'], data, {
+    req = urllib.request.Request(conf['urlPicons'], data.encode('utf-8'), {
                           'Content-Type': 'application/json'})
-    fil = urllib2.urlopen(req)
-    # response = json.load(fil)
-    # print(response)
-    # data  = json.load(response)
-    # print(response)
-    # listURL = ast.literal_eval(response)  # procurar alternativa
+    fil = urllib.request.urlopen(req)
     listURL = json.load(fil)
     fil.close()
 
     if DEBUG_MODE:
         print( json.dumps(listURL, sort_keys=True, indent=4) )
         print( "Downloads simultaneos: ",CONFIG['dl_simultaneos'])
-        # time.sleep(5)
 
     for l in listURL:
         found = False
@@ -381,10 +358,8 @@ def downloadPicons(listDw, conf):
 
     for l in receivedList:
         for chan in l[1]:
-            # print chan
             for file in listDw:
                 if file[0] == chan:
-
                     found = False
                     for dl in downloadList:
                         if dl[0] == l[0]:
@@ -410,7 +385,6 @@ def downloadPicons(listDw, conf):
         t.start()
         threads.append(t)
         while threading.active_count() > CONFIG['dl_simultaneos']:
-            # print(threading.active_count())
             time.sleep(0.1)
 
 
@@ -423,7 +397,7 @@ def downloadPicons(listDw, conf):
 
     update_progress(float(1))
 
-    map(lambda t: t.join(), threads)
+    list(map(lambda t: t.join(), threads))
 
 
 def lerLameDb(f):
@@ -436,7 +410,6 @@ def lerLameDb(f):
                 lDb.append(line)
 
         for x in range(0, len(lDb)):
-            # print x
             if lDb[x].startswith("p:"):
                 nomeCanal = lDb[x - 1].strip()
                 tmpId = lDb[x - 2].strip().split(":")
@@ -448,7 +421,7 @@ def lerLameDb(f):
                     "0") + ":" + tmpId[3].lstrip("0") + ":" + tmpId[1] + ":0:0:0"
 
                 canalclean = re.sub(re.compile('\W'), '', ''.join(c.lower() for c in unicodedata.normalize(
-                    'NFKD', nomeCanal.replace("+", "mais")).encode('ascii', 'ignore') if not c.isspace()))
+                    'NFKD', str(nomeCanal).replace("+", "mais")).encode('ascii', 'ignore').decode('ascii') if not isinstance(c, int) and not c.isspace()))
 
                 filenameE2 = idChannel.replace(":", "_").upper() + '.png'
                 if canalclean != "":
@@ -512,7 +485,7 @@ def lerArquivoUserBouquet(f, conf):
                     if "::" in lineSpl:
                         tmpChannel = lineSpl.split("::")
                         canalclean = re.sub(re.compile('\W'), '', ''.join(c.lower() for c in unicodedata.normalize(
-                            'NFKD', tmpChannel[1].replace("+", "mais")).encode('ascii', 'ignore') if not c.isspace()))
+                            'NFKD', tmpChannel[1].replace("+", "mais")).encode('ascii', 'ignore').decode('ascii') if not isinstance(c, int) and not c.isspace()))
 
                         filenameE2 = tmpChannel[0].replace(
                             ":", "_").upper() + '.png'
@@ -582,13 +555,13 @@ def check_for_tvh(conf):
 
     logging.info("TVHeadend running")
     try:
-        req = urllib2.Request(
+        req = urllib.request.Request(
             "http://" + conf['tvheadendAddress'] + ":" + conf['tvheadendPort'] + '/api/serverinfo')
-        urllib2.urlopen(req)
-    except urllib2.HTTPError as e_error:
+        urllib.request.urlopen(req)
+    except urllib.error.HTTPError as e_error:
         logging.info("TVHeadend com autenticação, utilize --help")
         logging.info('Error code: %s', e_error.code)
-    except urllib2.URLError as e_error:
+    except urllib.error.URLError as e_error:
         logging.info("TVHeadend nao encontrado")
         logging.info('Reason: %s', e_error.reason)
     else:
@@ -600,17 +573,17 @@ def check_for_tvh(conf):
 def getTvhChannelList(conf):
     logging.info("Obtendo lista de canais do TVHeadend")
     finalList = []
-    req = urllib2.Request("http://" + conf['tvheadendAuth'] +
+    req = urllib.request.Request("http://" + conf['tvheadendAuth'] +
                           conf['tvheadendAddress'] + ":" + conf['tvheadendPort'] + '/api/channel/list')
-    fil = urllib2.urlopen(req)
+    fil = urllib.request.urlopen(req)
     listURL = json.load(fil)
     fil.close()
 
     for l in listURL['entries']:
         canalclean = re.sub(re.compile('\W'), '', ''.join(c.lower() for c in unicodedata.normalize(
-            'NFKD', l['val'].replace("+", "mais")).encode('ascii', 'ignore') if not c.isspace()))
+            'NFKD', l['val'].replace("+", "mais")).encode('ascii', 'ignore').decode('ascii') if not isinstance(c, int) and not c.isspace()))
         canalTvh = re.sub(re.compile('\W'), '', ''.join(c.lower() for c in unicodedata.normalize(
-            'NFKD', l['val'].replace("+", "plus").replace("&", "and")).encode('ascii', 'ignore') if not c.isspace()))
+            'NFKD', l['val'].replace("+", "plus").replace("&", "and")).encode('ascii', 'ignore').decode('ascii') if not isinstance(c, int) and not c.isspace()))
 
         if canalclean == 'namenotset':
             continue
@@ -629,16 +602,16 @@ def getTvhChannelList(conf):
 
 def changeTvhConfig(conf):
     logging.info("Alterando configuracao do TVHeadend")
-    tvhreq = urllib.urlopen("http://" + conf['tvheadendAuth'] + conf['tvheadendAddress'] + ":" + conf['tvheadendPort'] +
+    tvhreq = urllib.request.urlopen("http://" + conf['tvheadendAuth'] + conf['tvheadendAddress'] + ":" + conf['tvheadendPort'] +
                             '/api/config/save?node={"chiconpath":"file:///home/root/tvheadend_picons/%25c.png", "prefer_picon":"False", "chiconscheme":"2"}')
 
 
 def reconfigure_image_cache(conf):
     logging.info("Reconfigurando imagecache do TVHeadend")
 
-    req = urllib2.Request("http://" + conf['tvheadendAddress'] +
+    req = urllib.request.Request("http://" + conf['tvheadendAddress'] +
                           ":" + conf['tvheadendPort'] + '/api/imagecache/config/load')
-    fil = urllib2.urlopen(req)
+    fil = urllib.request.urlopen(req)
     listURL = json.load(fil)
     fil.close()
 
@@ -649,15 +622,15 @@ def reconfigure_image_cache(conf):
                 imagecache_enabled = True
 
     if not imagecache_enabled:
-        req = urllib2.Request("http://" + conf['tvheadendAddress'] + ":" +
+        req = urllib.request.Request("http://" + conf['tvheadendAddress'] + ":" +
                               conf['tvheadendPort'] + '/api/imagecache/config/save?node={"enabled":"true"}')
-        fil = urllib2.urlopen(req)
+        fil = urllib.request.urlopen(req)
         fil.close()
         time.sleep(1)
 
-    req = urllib2.Request("http://" + conf['tvheadendAddress'] + ":" +
+    req = urllib.request.Request("http://" + conf['tvheadendAddress'] + ":" +
                           conf['tvheadendPort'] + '/api/imagecache/config/clean?clean=1')
-    fil = urllib2.urlopen(req)
+    fil = urllib.request.urlopen(req)
     fil.close()
 
 def iniciaDownloadPicons(conf):

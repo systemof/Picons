@@ -199,7 +199,7 @@ Compares two version number strings
         import shutil
         shutil.copymode(backup_path, app_path)
     except:
-        os.chmod(app_path, 0755)
+        os.chmod(app_path, 0o755)
     logging.info("New version installed as %s" % app_path)
     logging.info("(previous version backed up to %s)" % (backup_path))
     return True
